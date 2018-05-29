@@ -9,6 +9,10 @@ Webpack development and hot reload middleware.
 ```js
 module.exports = {
 
+  plugins: [
+    "leajs-webpack"
+  ]
+
   // Configuration object
   // type: Object
   webpack: {
