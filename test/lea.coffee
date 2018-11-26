@@ -49,12 +49,15 @@ test {webpack: {hot: true, silent: true}}, (snap, lea) =>
   snap 
     filter: "headers,statusCode,-headers.date,-headers.last-modified,body"
     stream: "":"body"
+    encoding: "utf8"
     transform: body: (str) =>
-      val = JSON.parse(str.replace("data: ",""))
-      delete val.time
-      delete val.hash
-      val.modules = Object.keys(val.modules).length
-      return val
+      if str
+        str = str.toString("utf8").split("\n")
+        val = JSON.parse(str[1].replace("data: ",""))
+        delete val.time
+        delete val.hash
+        val.modules = Object.keys(val.modules).length
+        return val
     plain: true
     promise: new Promise (resolve, reject) =>
       http.get Object.assign({
@@ -62,8 +65,8 @@ test {webpack: {hot: true, silent: true}}, (snap, lea) =>
         port: port()
         agent: false
         }, {path: "/__webpack_hmr"}), (res) =>
-          lea.close()
-          res.setEncoding("utf8")
-
-          resolve(res)
+          setTimeout (=>
+            lea.close()
+            resolve(res)
+          ),500
       .on "error", reject

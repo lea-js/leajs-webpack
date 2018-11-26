@@ -24,8 +24,14 @@ module.exports = ({init,position,config:confWebpack,readConf}) =>
         folders: [output]
         mount: mount
   else
-    isCompiled = null
-    whenCompiled = new Promise (resolve) => isCompiled = resolve
+    isCompiled = whenCompiled = null
+    resetCompilation = =>
+      whenCompiled = new Promise (resolve) => isCompiled = resolve
+    resetCompilation()
+    isRead = whenRead = null
+    resetRead = =>
+      whenRead = new Promise (resolve) => isRead = resolve
+    resetRead()
     if confWebpack.hot != false
       lastBundles = []
       hmr = "/__webpack_hmr"
@@ -73,16 +79,17 @@ module.exports = ({init,position,config:confWebpack,readConf}) =>
       
       effMount = effOutput = null
       respond.hookIn position.before, (req) =>
-        whenCompiled.then =>
+        whenRead.then =>
           if ~((url = req.url).indexOf(effMount))
-            filename = effOutput+url.replace(effMount,"")
-            try
-              req.body = mfs.readFileSync filename
-            catch e
-              return
-            type = mimeLookUp[filename] ?= mime.getType(filename)
-            if type
-              req.head.contentType = type
+            whenCompiled.then =>
+              filename = effOutput+url.replace(effMount,"")
+              try
+                req.body = mfs.readFileSync filename
+              catch e
+                return
+              type = mimeLookUp[filename] ?= mime.getType(filename)
+              if type
+                req.head.contentType = type
 
       close.hookIn => closer?()
 
@@ -92,11 +99,13 @@ module.exports = ({init,position,config:confWebpack,readConf}) =>
         folders: folder or ["./build","./"]
         prop: "webpackConf"
         cancel: ({watcher}) =>
+          resetRead()
           new Promise (resolve) => watcher.close(resolve) if watcher?
         cb: (base) =>
           {webpackConf} = base
           effMount = mount or webpackConf.output?.publicPath or ""
           effOutput = output or webpackConf.output?.path or "/app_build"
+          isRead()
           webpackConf.mode = "development"
 
           if hot != false
@@ -121,19 +130,20 @@ module.exports = ({init,position,config:confWebpack,readConf}) =>
           compiler.outputFileSystem = mfs
 
           lastHash = null
+          compiler.hooks.watchRun.tap "leajs-webpack-plugin", resetCompilation
+
           base.watcher = compiler.watch webpackConf.watchOptions, (err, stats) =>
             
             if err?
               console.log err.stack or err
               console.log err.details if err.details
             else if lastHash != (lastHash = stats.hash)
+              info = stats.toJson()
               if stats.hasErrors()
-                for error in stats.toJson().errors
-                  console.log error
+                console.log(info.errors)
               else 
                 if stats.hasWarnings()
-                  for warning in stats.toJson().warnings 
-                    console.log warning
+                  console.log(info.warnings)
                 unless silent == true
                   console.log stats.toString(chunks: false, colors: true)
           
@@ -160,7 +170,8 @@ module.exports = ({init,position,config:confWebpack,readConf}) =>
                   for bundle in lastBundles
                     write bundle
                 
-                isCompiled?()
-                isCompiled = null
+            isCompiled?()
+            isCompiled = null
+          return null
 
 module.exports.configSchema = require("./configSchema")
